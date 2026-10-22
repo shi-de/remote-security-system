@@ -1,0 +1,35 @@
+<view class="container">
+  <view class="title">远程安防监控系统</view>
+
+  <view class="status-bar">
+    <text>MQTT：{{mqttStatusText}}</text>
+    <text wx:if="{{lastMessageTime}}">最后接收：{{lastMessageTime}}</text>
+  </view>
+
+  <view wx:if="{{activeAlerts.length > 0}}" class="alert-panel">
+    <block wx:for="{{activeAlerts}}" wx:key="type">
+      <view class="alert-item">{{item.title}}：{{item.content}}</view>
+    </block>
+  </view>
+
+  <view class="card-container">
+    <view class="data-card">
+      <view class="card-title">环境数据</view>
+      <view wx:if="{{displayData.length === 0}}" class="empty-text">等待设备数据...</view>
+      <block wx:for="{{displayData}}" wx:key="label">
+        <view class="data-row">
+          <view class="data-value">{{item.label}}</view>
+          <view class="data-label">{{item.value}} {{item.unit}}</view>
+        </view>
+      </block>
+    </view>
+
+    <view class="data-card">
+      <view class="card-title">远程控制</view>
+      <text class="section-title">设置烟雾阈值 MQMax</text>
+      <view class="body-view">
+        <slider bindchange="slider3" min="0" max="100" id="slider3" show-value />
+      </view>
+    </view>
+  </view>
+</view>

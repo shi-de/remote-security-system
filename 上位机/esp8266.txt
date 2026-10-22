@@ -1,0 +1,202 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+#include <PubSubClient.h>
+String mqtt_topic = "32fdH21323J7328HJ/002112011SWP/121211";
+
+
+String mqtt_server = "broker.emqx.io";
+String mqtt_port = "1883";
+String mqtt_username = "";
+String mqtt_password = "";  
+//#define DEBUG 0
+const char *ssid = "test";
+const char *pass = "123456789";
+const char *willMsg = "";     // 遗嘱消息内容
+const int willQoS = 1;        // 遗嘱QoS
+const bool willRetain = true; // 遗嘱保留
+const int QoS = 1;
+const bool cleanSession = false;
+String ssid_cache = "";
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
+bool connectMQTTServer()
+{
+  String mqtt_clientid = "ESP8266Client-" + String(ESP.getChipId());
+  if (mqttClient.connect(mqtt_clientid.c_str(), mqtt_username.c_str(), mqtt_password.c_str(), mqtt_topic.c_str(), willQoS, willRetain, willMsg, cleanSession))
+  {
+#ifdef DEBUG
+    Serial.println("MQTT连接成功");
+#endif
+    if (mqttClient.subscribe(mqtt_topic.c_str(), QoS))
+    {
+#ifdef DEBUG
+      Serial.println("订阅主题成功");
+#endif
+    Serial.println("TODEVICEDATA##mqtt_flag##1##");
+    }
+
+    else
+    {
+#ifdef DEBUG
+      Serial.println("订阅主题失败");
+#endif
+      Serial.println("TODEVICEDATA##mqtt_flag##0##");
+      return false;
+    }
+    return true;
+  }
+  else
+  {
+#ifdef DEBUG
+    Serial.print("MQTT连接失败，错误码：");
+    Serial.println(mqttClient.state());
+#endif
+    Serial.println("TODEVICEDATA##mqtt_flag##0##");
+    return false;
+  }
+}
+void mqttCallback(char *topic, byte *payload, unsigned int length)
+{
+  // 将payload转换为字符串
+  String message = "";
+  for (unsigned int i = 0; i < length; i++)
+  {
+    message += (char)payload[i];
+  }
+  // 如果接收到的消息和发出的消息相同，不做任何处理
+  if (message == ssid_cache)
+  {
+    return;
+  }
+  else
+  {
+    // 如果接收到的消息不为空，则将消息写入串口
+    if (message != "")
+    {
+      Serial.println(message);
+    }
+  }
+
+#ifdef DEBUG
+  Serial.print("接收到消息：");
+  Serial.println(message);
+  Serial.print("上一次接收到的消息：");
+  Serial.println(ssid_cache);
+#endif
+}
+void connectWifi()
+{
+  WiFi.begin(ssid, pass);
+#ifdef DEBUG
+  Serial.println("Connecting to WiFi");
+#endif
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+#ifdef DEBUG
+    Serial.print(".");
+#endif
+    Serial.println("TODEVICEDATA##wifi_flag##0##");
+  }
+#ifdef DEBUG
+  Serial.println("Connected to the WiFi network");
+#endif
+  Serial.println("TODEVICEDATA##wifi_flag##1##");
+  delay(1000);
+}
+void setup(void)
+{
+  Serial.begin(115200);
+  connectWifi();
+  mqttClient.setServer(mqtt_server.c_str(), 1883);
+  // 连接MQTT服务器
+  while (1)
+  {
+    if (connectMQTTServer())
+      break;
+    delay(1000);
+  }
+#ifdef DEBUG
+  Serial.println("MQTT连接成功");
+  Serial.println("服务器地址：");
+  Serial.println(mqtt_server);
+  Serial.println("端口号：");
+  Serial.println(mqtt_port);
+  Serial.println("用户名：");
+  Serial.println(mqtt_username);
+  Serial.println("密码：");
+  Serial.println(mqtt_password);
+  Serial.println("主题：");
+  Serial.println(mqtt_topic);
+#endif
+  mqttClient.setCallback(mqttCallback);
+  // 设置MQTT心跳间隔时间
+  mqttClient.setKeepAlive(10);
+  // 设置MQTT回调函数
+}
+
+/// @brief  MQTT心跳处理
+void mqttLoop()
+{
+  if (mqttClient.connected())
+  {                    // 如果开发板成功连接服务器
+    mqttClient.loop(); // 处理信息以及心跳
+  }
+  else
+  {
+    //检测WIFI是否连接
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      connectWifi(); // 如果没有连接WIFI则尝试连接WIFI
+    }
+    connectMQTTServer(); // 则尝试连接服务器
+  }
+}
+// 串口接受数据缓存
+String serialData = "";
+String serialDatanode = "";
+void loop(void)
+{
+
+  mqttLoop();
+  if (Serial.available() > 0) // 有时候串口会一直卡住
+  {
+    // 读取到的数据追加到serialData中
+    serialData += Serial.readString();
+    // serialData = Serial.readStringUntil('\n');
+  }
+
+  // 如果serialData不为空 读取serialData中的数据含几个FFDD
+  if (serialData != "" && serialData.length() > 0)
+  {
+    int count = 0;
+    for (unsigned int i = 0; i < serialData.length(); i++)
+    {
+      if (serialData.substring(i, i + 4) == "FFDD")
+        count++;
+    }
+    if (count > 0)
+    {
+      // 将FFDD前面的数据发送到MQTT服务器
+      serialDatanode = serialData.substring(0, serialData.indexOf("FFDD"));
+      if (serialDatanode != "")
+      {
+ 
+#ifdef DEBUG
+        Serial.println("发送非保留消息");
+#endif
+        // 将此次发送的数据存入ssid_cache
+        ssid_cache = serialDatanode;
+        // 发送数据到MQTT服务器
+        mqttClient.publish(mqtt_topic.c_str(), serialDatanode.c_str(), true);
+        mqttLoop();
+      }
+      // 将此次发送的数据从serialData中删除
+      serialData = serialData.substring(serialData.indexOf("FFDD") + 4);// 删除FFDD
+      count--; // 减少一个FFDD
+    }
+  }
+  delay(30);
+}

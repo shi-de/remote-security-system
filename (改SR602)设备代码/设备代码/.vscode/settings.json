@@ -1,0 +1,13 @@
+{
+    "files.associations": {
+        "*.wxss": "css",
+        "*.wxml": "html",
+        "main.h": "c",
+        "bh1750.h": "c",
+        "led.h": "c",
+        "delay.h": "c",
+        "step_motor.h": "c",
+        "uid_read.h": "c",
+        "esp8266.h": "c"
+    }
+}
